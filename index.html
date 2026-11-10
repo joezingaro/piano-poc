@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Piano Gate POC</title>
+<title>Piano Gate</title>
+<script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@2.2.1/build/opensheetmusicdisplay.min.js"></script>
 <style>
 :root{
   --bg:#f7f5f0; --panel:#ffffff; --ink:#1d1d1f; --muted:#6c6b70; --line:#d8d4cb;
@@ -18,6 +19,7 @@
   }
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 body{padding:12px 16px 24px;max-width:1100px;margin:0 auto}
@@ -25,6 +27,7 @@ header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 h1{font-size:18px;margin:0;flex:1 1 auto;min-width:0}
 button,select{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);
   border-radius:10px;padding:8px 12px;cursor:pointer}
+select{max-width:100%}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 button:disabled{opacity:.5;cursor:default}
 .pill{font-size:13px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
@@ -41,39 +44,27 @@ label.bpm input{width:110px}
 #status .big{font-size:18px;font-weight:600}
 #status .score{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted)}
 #countin{font-size:28px;font-weight:700;color:var(--accent)}
-#staffWrap{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
-#staff{display:block}
-#staff .sl{stroke:var(--ink);stroke-width:1;opacity:.55}
-#staff .bar{stroke:var(--ink);stroke-width:1.2;opacity:.7}
-#staff .clef{fill:var(--ink);font-size:58px}
-#staff .step{color:var(--ink)}
-#staff .step.cur{color:var(--accent)}
-#staff .step.ok{color:var(--ok)}
-#staff .step.part{color:var(--part)}
-#staff .step.miss{color:var(--bad)}
-#staff .head.filled{fill:currentColor}
-#staff .head.hollow{fill:none;stroke:currentColor;stroke-width:1.7}
-#staff .stem,#staff .ledger,#staff .flag{stroke:currentColor;stroke-width:1.4;fill:none}
-#staff .dot{fill:currentColor}
-#staff .ann{fill:currentColor;font-size:11px;text-anchor:middle;opacity:.85}
-#staff .fing{font-weight:700;font-size:12px}
-#staff .cursor{fill:var(--accent);opacity:.13}
-body.no-names #staff .ann-name{display:none}
-body.no-fingers #staff .ann-finger{display:none}
+#songInfo{color:var(--muted);font-size:13px;margin-top:6px}
+#sheetWrap{position:relative;margin-top:10px;background:#fffef9;border:1px solid var(--line);border-radius:12px;
+  max-height:52vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#sheet{min-height:120px}
+#sheet img[id^="cursorImg"]{transition:left .14s ease-out, top .14s ease-out}
+#sheet .nn{font:600 10px system-ui,sans-serif;fill:#2f6fed;text-anchor:middle;pointer-events:none}
+body.no-names #sheet .nn{display:none}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:14px}
 .toggles{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .toggles label{display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--line);
   border-radius:999px;background:var(--panel);font-size:13px;cursor:pointer;user-select:none}
-#kbd{position:relative;height:150px;margin-top:12px;user-select:none;touch-action:none}
+#kbd{position:relative;height:140px;margin-top:12px;user-select:none;touch-action:none}
 #kbd .w{position:absolute;top:0;bottom:0;background:var(--white);border:1px solid #9a978f;
   border-radius:0 0 6px 6px;display:flex;align-items:flex-end;justify-content:center;
-  padding-bottom:6px;font-size:10px;color:#77746c}
-#kbd .b{position:absolute;top:0;height:62%;background:var(--black);border-radius:0 0 4px 4px;z-index:2}
+  padding-bottom:6px;font-size:10px;color:#77746c;transition:background-color .12s}
+#kbd .b{position:absolute;top:0;height:62%;background:var(--black);border-radius:0 0 4px 4px;z-index:2;transition:background-color .12s}
 #kbd .hint.w{background:var(--hint)}
 #kbd .hint.b{background:var(--accent)}
 #kbd .down.w{background:var(--down)}
 #kbd .down.b{background:#3d5fae}
-#kbd .wrong.w,#kbd .wrong.b{background:var(--bad)!important}
+#kbd .wrong.w,#kbd .wrong.b{background:var(--bad)!important;transition:none}
 details{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
 summary{cursor:pointer;color:var(--muted)}
 #log{font:12px/1.5 ui-monospace,Consolas,monospace;max-height:180px;overflow:auto;white-space:pre}
@@ -83,24 +74,30 @@ summary{cursor:pointer;color:var(--muted)}
 </head>
 <body>
 <header>
-  <h1>🎹 Piano gate — proof of concept</h1>
+  <h1>🎹 Piano gate</h1>
   <span id="midiPill" class="pill">MIDI: not connected</span>
   <button id="midiBtn">Connect MIDI</button>
 </header>
 
 <div class="row">
   <select id="song"></select>
+  <button id="openBtn" title="Open a MusicXML file (.musicxml, .xml, .mxl)">Open file…</button>
+  <input id="file" type="file" accept=".musicxml,.xml,.mxl" hidden>
+</div>
+<div id="songInfo"></div>
+
+<div class="row">
   <div class="seg" id="modeSeg">
     <button data-mode="train" class="sel">Training</button>
     <button data-mode="play">Play</button>
   </div>
-  <label class="bpm" id="bpmBox" hidden>Tempo <input id="bpm" type="range" min="40" max="140" value="72"><span id="bpmVal">72</span></label>
-  <button id="startBtn" class="primary">Start</button>
+  <label class="bpm" id="bpmBox" hidden>Tempo <input id="bpm" type="range" min="30" max="180" value="80"><span id="bpmVal">80</span></label>
+  <button id="startBtn" class="primary" disabled>Start</button>
 </div>
 
-<div id="status"><span class="big" id="msg">Pick a song and press Start.</span><span id="countin"></span><span class="score" id="score"></span></div>
+<div id="status"><span class="big" id="msg">Loading…</span><span id="countin"></span><span class="score" id="score"></span></div>
 
-<div id="staffWrap"><svg id="staff"></svg></div>
+<div id="sheetWrap"><div id="sheet"></div><div id="loading">Loading sheet music…</div></div>
 
 <div class="toggles">
   <label><input type="checkbox" id="tNames" checked> Note names</label>
@@ -111,7 +108,7 @@ summary{cursor:pointer;color:var(--muted)}
 </div>
 
 <div id="kbd"></div>
-<p class="help">No piano handy? Tap the keys (several fingers = a chord), or use the computer keyboard: <b>A W S E D F T G Y H U J K</b> = C4 to C5, <b>Z</b> = B3.</p>
+<p class="help">Right hand (top staff) only for now; the left hand is shown in grey. No piano handy? Tap the keys (several fingers = a chord), or use the computer keyboard: <b>A W S E D F T G Y H U J K</b> = C4 to C5, <b>Z</b> = B3.</p>
 
 <details id="mon">
   <summary>MIDI monitor</summary>
@@ -122,131 +119,168 @@ summary{cursor:pointer;color:var(--muted)}
 <script>
 (() => {
 'use strict';
-
-// ---------- songs ----------
-// Each step: notes (MIDI numbers, all struck together = chord), dur in beats, fingers.
-function build(seq){
-  let beat = 0;
-  return seq.map(([n, dur, f]) => {
-    const notes = Array.isArray(n) ? n : [n];
-    const fingers = Array.isArray(f) ? f : [f];
-    const s = { beat, dur, notes, fingers };
-    beat += dur;
-    return s;
-  });
-}
-const M1 = [[64,1,3],[64,1,3],[65,1,4],[67,1,5]];
-const M2 = [[67,1,5],[65,1,4],[64,1,3],[62,1,2]];
-const M3 = [[60,1,1],[60,1,1],[62,1,2],[64,1,3]];
-const SONGS = {
-  ode: { title: 'Ode to Joy (right hand) + chord ending', steps: build([
-    ...M1, ...M2, ...M3, [64,1.5,3],[62,.5,2],[62,2,2],
-    ...M1, ...M2, ...M3, [62,1.5,2],[60,.5,1],[60,2,1],
-    [[60,64,67],2,[1,3,5]], [[59,62,67],2,[1,2,5]],
-    [[60,64,67],4,[1,3,5]],
-  ])},
-  chords: { title: 'Chord check: C, F, G, C', steps: build([
-    [[60,64,67],2,[1,3,5]], [[60,65,69],2,[1,4,5]],
-    [[59,62,67],2,[1,2,5]], [[60,64,67],2,[1,3,5]],
-    [[60,64,67],1,[1,3,5]], [[60,65,69],1,[1,4,5]], [[59,62,67],1,[1,2,5]], [[60,64,67],1,[1,3,5]],
-    [[60,64,67],4,[1,3,5]],
-  ])},
-};
+const $ = id => document.getElementById(id);
 
 // ---------- music helpers ----------
 const LETTER = [0,0,1,1,2,3,3,4,4,5,5,6];
 const SHARP  = [0,1,0,1,0,0,1,0,1,0,1,0];
 const NAMES  = ['C','D','E','F','G','A','B'];
 const oct  = m => Math.floor(m/12) - 1;
-const dia  = m => oct(m)*7 + LETTER[m%12];          // diatonic index; E4 = 30
 const name = m => NAMES[LETTER[m%12]] + (SHARP[m%12] ? '♯' : '') + oct(m);
+// Spelled name from the score itself (so B♭ stays B♭, not A♯).
+const ACC = { '-2':'𝄫', '-1':'♭', '0':'', '1':'♯', '2':'𝄪' };
+function spelled(note){
+  try {
+    const p = note.Pitch;
+    return 'CDEFGAB'[[0,2,4,5,7,9,11].indexOf(p.FundamentalNote)] + (ACC[String(p.AccidentalHalfTones)] ?? '') + (p.Octave + 3);
+  } catch (_) { return name(note.halfTone + 12); }
+}
+
+const COLORS = { cur: '#2f6fed', ok: '#1f9d55', part: '#d98a00', miss: '#d64545', lh: '#a9a69f', ink: '#000000' };
 
 // ---------- state ----------
-const $ = id => document.getElementById(id);
 const held = new Set();
-let songKey = 'ode', steps = [], mode = 'train';
+let osmd = null, steps = [], mode = 'train';
 let running = false, idx = 0, struck = new Set();
 let trainStart = 0, totalWrong = 0;
-let t0 = 0, beatMs = 0, raf = 0, lastBeat = -99;
+let t0 = 0, beatMs = 0, raf = 0, lastBeat = -99, curK = 0;
+let songBpm = 80, totalBeats = 0;
 
-// ---------- staff rendering ----------
-const H = 6, BOTTOM = 122, LEFT = 74, PPB = 58, NOTE_OFF = 20;
-const yOf = d => BOTTOM - (d - 30) * H;
-const xOf = beat => LEFT + beat * PPB + NOTE_OFF;
-
-function renderStaff(){
-  const total = steps.length ? steps[steps.length-1].beat + steps[steps.length-1].dur : 4;
-  const W = LEFT + total*PPB + 30;
-  const svg = $('staff');
-  svg.setAttribute('width', W); svg.setAttribute('height', 190);
-  svg.setAttribute('viewBox', `0 0 ${W} 190`);
-  let s = '';
-  for (let i = 0; i < 5; i++){ const y = BOTTOM - i*2*H; s += `<line class="sl" x1="8" x2="${W-12}" y1="${y}" y2="${y}"/>`; }
-  s += `<text class="clef" x="10" y="${BOTTOM+12}">𝄞</text>`;
-  const top = BOTTOM - 8*H;
-  for (let b = 4; b <= total; b += 4){
-    const x = LEFT + b*PPB;
-    s += `<line class="bar" x1="${x}" x2="${x}" y1="${top}" y2="${BOTTOM}"/>`;
-    if (b === total) s += `<line class="bar" x1="${x+4}" x2="${x+4}" y1="${top}" y2="${BOTTOM}" style="stroke-width:3.5"/>`;
-  }
-  s += `<rect class="cursor" id="cursor" x="0" y="${top-26}" width="30" height="${8*H+52}" rx="6"/>`;
-  steps.forEach((st, i) => { s += stepSvg(st, i); });
-  svg.innerHTML = s;
+// ---------- sheet music ----------
+function newOsmd(){
+  osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay('sheet', {
+    autoResize: false, backend: 'svg', drawTitle: false, drawSubtitle: false, drawComposer: false,
+    drawMetronomeMarks: false,
+    drawPartNames: false, drawFingerings: $('tFingers').checked,
+    drawingParameters: 'compacttight', followCursor: false,
+    cursorsOptions: [{ type: 0, color: '#2f6fed', alpha: 0.35, follow: false }],
+  });
 }
 
-function stepSvg(st, i){
-  const cx = xOf(st.beat);
-  const ds = st.notes.map(dia);
-  const lo = Math.min(...ds), hi = Math.max(...ds);
-  const filled = st.dur < 2;
-  const stemUp = (lo + hi) / 2 < 34;
-  let s = `<g class="step" id="st${i}">`;
-  // ledger lines
-  for (let d = 28; d >= lo; d -= 2) s += `<line class="ledger" x1="${cx-11}" x2="${cx+11}" y1="${yOf(d)}" y2="${yOf(d)}"/>`;
-  for (let d = 40; d <= hi; d += 2) s += `<line class="ledger" x1="${cx-11}" x2="${cx+11}" y1="${yOf(d)}" y2="${yOf(d)}"/>`;
-  st.notes.forEach((m, k) => {
-    const y = yOf(ds[k]);
-    s += `<ellipse class="head ${filled ? 'filled' : 'hollow'}" cx="${cx}" cy="${y}" rx="6.6" ry="4.6" transform="rotate(-20 ${cx} ${y})"/>`;
-    if (SHARP[m%12]) s += `<text class="ann" x="${cx-15}" y="${y+4}" style="font-size:14px">♯</text>`;
-    if (st.dur === 1.5 || st.dur === 3){ const dy = (ds[k]-30) % 2 === 0 ? -3 : 0; s += `<circle class="dot" cx="${cx+11}" cy="${y+dy}" r="1.8"/>`; }
-  });
-  if (st.dur < 4){
-    if (stemUp){
-      const x = cx + 6.2, y1 = yOf(lo), y2 = yOf(hi) - 34;
-      s += `<line class="stem" x1="${x}" x2="${x}" y1="${y1}" y2="${y2}"/>`;
-      if (st.dur === .5) s += `<path class="flag" d="M${x},${y2} q2,9 9,13 q4,4 1,11"/>`;
-    } else {
-      const x = cx - 6.2, y1 = yOf(hi), y2 = yOf(lo) + 34;
-      s += `<line class="stem" x1="${x}" x2="${x}" y1="${y1}" y2="${y2}"/>`;
-      if (st.dur === .5) s += `<path class="flag" d="M${x},${y2} q2,-9 9,-13 q4,-4 1,-11"/>`;
+async function loadScore(content, label){
+  stop();
+  $('startBtn').disabled = true; $('loading').hidden = false;
+  $('msg').textContent = 'Loading ' + label + '…'; $('score').textContent = '';
+  try {
+    if (!osmd) newOsmd();
+    await osmd.load(content);
+    renderScore();
+    const s = osmd.Sheet;
+    songBpm = Math.round(s.DefaultStartTempoInBpm || 80);
+    $('bpm').value = songBpm; $('bpmVal').textContent = songBpm;
+    const rhCount = steps.length;
+    $('songInfo').textContent = [s.TitleString, s.ComposerString].filter(Boolean).join(' — ') +
+      ` · ${rhCount} right-hand steps · ${songBpm} bpm`;
+    if (!rhCount) throw new Error('No right-hand notes found in this file.');
+    $('msg').textContent = 'Press Start.'; $('startBtn').disabled = false; $('startBtn').textContent = 'Start';
+    renderKeyboard();
+  } catch (err){
+    console.error(err);
+    $('msg').textContent = 'Could not load that file: ' + (err.message || err);
+  } finally { $('loading').hidden = true; }
+}
+
+// Render, then walk the cursor once to build the list of right-hand steps.
+function renderScore(){
+  const keepResults = steps;
+  osmd.setOptions({ drawFingerings: $('tFingers').checked });
+  const w = $('sheetWrap').clientWidth;
+  osmd.zoom = w < 500 ? 0.62 : w < 800 ? 0.8 : 1;
+  osmd.render();
+  const c = osmd.cursor; c.show(); c.reset();
+  const built = [];
+  let k = 0;
+  while (!c.iterator.EndReached){
+    const t = c.iterator.currentTimeStamp.RealValue * 4; // in quarter notes
+    const rh = [], lhG = [], rhG = [], allRh = [];
+    const gnotes = c.GNotesUnderCursor();
+    for (const gn of gnotes){
+      const n = gn.sourceNote;
+      const isRh = n.ParentStaffEntry?.ParentStaff?.idInMusicSheet === 0;
+      if (!isRh){ lhG.push(gn); continue; }
+      if (n.isRest() || n.ParentVoiceEntry?.IsGrace) continue;
+      allRh.push(n);
+      rhG.push(gn);
+      const tieCont = n.NoteTie && n.NoteTie.StartNote !== n;
+      if (!tieCont) rh.push(n);
+    }
+    lhG.forEach(gn => colorG(gn, COLORS.lh));
+    if (rh.length){
+      const notes = [...new Set(rh.map(n => n.halfTone + 12))].sort((a,b) => a-b);
+      const names = rh.slice().sort((a,b) => a.halfTone - b.halfTone).map(spelled);
+      const dur = Math.max(...allRh.map(n => n.Length.RealValue * 4));
+      built.push({ k, beat: t, dur, notes, names, gnotes: rhG });
+    }
+    c.next(); k++;
+  }
+  totalBeats = built.length ? Math.max(...built.map(s => s.beat + s.dur)) : 0;
+  // Keep any results already earned (re-render during a run, e.g. a toggle flip).
+  if (keepResults.length === built.length) built.forEach((s, i) => { s.r = keepResults[i].r; s.on = keepResults[i].on; s.tol = keepResults[i].tol; s.state = keepResults[i].state; });
+  steps = built;
+  steps.forEach((s, i) => paintStep(i, s.state || null));
+  addNoteNames();
+  c.reset(); curK = 0;
+  if (running && mode === 'train') goToStep(idx); else moveCursorTo(0, false);
+}
+
+function colorG(gn, color){
+  const el = gn.getSVGGElement && gn.getSVGGElement(); if (!el) return;
+  el.querySelectorAll('path, rect').forEach(p => { p.setAttribute('fill', color); p.setAttribute('stroke', color); });
+}
+function paintStep(i, state){
+  const s = steps[i]; if (!s) return;
+  s.state = state;
+  s.gnotes.forEach(gn => colorG(gn, COLORS[state] || COLORS.ink));
+}
+
+function addNoteNames(){
+  document.querySelectorAll('#sheet .nn').forEach(e => e.remove());
+  for (const s of steps){
+    s.gnotes.forEach(gn => {
+      const n = gn.sourceNote;
+      if (n.NoteTie && n.NoteTie.StartNote !== n) return;
+      const head = gn.getNoteheadSVGs && gn.getNoteheadSVGs()[0];
+      const g = gn.getSVGGElement && gn.getSVGGElement();
+      if (!head || !g) return;
+      let bb; try { bb = head.getBBox(); } catch(_) { return; }
+      const svg = g.ownerSVGElement; if (!svg) return;
+      const tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      tx.setAttribute('class', 'nn');
+      tx.setAttribute('x', bb.x + bb.width/2);
+      tx.setAttribute('y', bb.y + bb.height + 9);
+      tx.textContent = spelled(n).replace(/\d+$/, '');
+      g.parentNode.appendChild(tx);
+    });
+  }
+}
+
+// Move the score's cursor to iteration k (only forward; reset if going back).
+function moveCursorTo(k, scroll = true){
+  const c = osmd.cursor;
+  if (k < curK){ c.reset(); curK = 0; }
+  while (curK < k && !c.iterator.EndReached){ c.next(); curK++; }
+  c.show();
+  if (scroll){
+    const el = c.cursorElement, wrap = $('sheetWrap');
+    if (el){
+      const cr = el.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      if (cr.top < wr.top || cr.bottom > wr.bottom - 10)
+        wrap.scrollTo({ top: Math.max(0, wrap.scrollTop + cr.top - wr.top - 16), behavior: 'smooth' });
     }
   }
-  // annotations: finger numbers above the staff, note names below
-  const fTop = Math.min(BOTTOM - 8*H, yOf(hi)) - 14;
-  const fs = [...st.fingers].reverse();
-  fs.forEach((f, k) => { s += `<text class="ann ann-finger fing" x="${cx}" y="${fTop - k*12}">${f}</text>`; });
-  const nTop = Math.max(BOTTOM, yOf(lo)) + 20;
-  [...st.notes].sort((a,b) => b-a).forEach((m, k) => { s += `<text class="ann ann-name" x="${cx}" y="${nTop + k*12}">${name(m)}</text>`; });
-  return s + '</g>';
 }
-
-function paintStep(i, cls){
-  const g = $('st'+i); if (!g) return;
-  g.classList.remove('cur','ok','part','miss');
-  if (cls) g.classList.add(cls);
-}
-function moveCursor(x){
-  const c = $('cursor'); if (c) c.setAttribute('x', x - 15);
-  const wrap = $('staffWrap');
-  wrap.scrollLeft = Math.max(0, x - wrap.clientWidth * 0.3);
-}
+function goToStep(i){ if (steps[i]) moveCursorTo(steps[i].k); }
 
 // ---------- on-screen keyboard ----------
-const KLO = 57, KHI = 84;  // A3 .. C6
 const keyEls = {};
+let kbdWired = false;
 function renderKeyboard(){
+  let lo = 57, hi = 84; // A3..C6, widened if the song needs it
+  steps.forEach(s => s.notes.forEach(m => { lo = Math.min(lo, m); hi = Math.max(hi, m); }));
+  while (SHARP[lo%12]) lo--; while (SHARP[hi%12]) hi++;
   const kbd = $('kbd'); kbd.innerHTML = '';
-  const whites = []; for (let m = KLO; m <= KHI; m++) if (!SHARP[m%12]) whites.push(m);
+  Object.keys(keyEls).forEach(k => delete keyEls[k]);
+  const whites = []; for (let m = lo; m <= hi; m++) if (!SHARP[m%12]) whites.push(m);
   const ww = 100 / whites.length;
   whites.forEach((m, i) => {
     const el = document.createElement('div');
@@ -254,13 +288,15 @@ function renderKeyboard(){
     el.dataset.note = m; if (m%12 === 0) el.textContent = name(m);
     kbd.appendChild(el); keyEls[m] = el;
   });
-  for (let m = KLO; m <= KHI; m++){
+  for (let m = lo; m <= hi; m++){
     if (!SHARP[m%12]) continue;
     const i = whites.indexOf(m-1);
     const el = document.createElement('div');
     el.className = 'b'; el.style.left = ((i+1)*ww - ww*0.3)+'%'; el.style.width = (ww*0.6)+'%';
     el.dataset.note = m; kbd.appendChild(el); keyEls[m] = el;
   }
+  held.forEach(n => keyEls[n] && keyEls[n].classList.add('down'));
+  if (kbdWired) return; kbdWired = true;
   const byPointer = new Map();
   kbd.addEventListener('pointerdown', e => {
     const n = +e.target.dataset.note; if (!n) return;
@@ -288,7 +324,7 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { const n = KEYMAP[e.key.toLowerCase()]; if (n) noteOff(n); });
 
-// ---------- audio (only for on-screen / computer keys; the piano makes its own sound) ----------
+// ---------- audio (on-screen / computer keys + metronome; the piano makes its own sound) ----------
 let ac = null;
 function audio(){ if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch(_){} } return ac; }
 function tone(freq, len, vol, type){
@@ -321,14 +357,16 @@ function noteOff(n){
 }
 
 // ---------- training mode: wait until the right keys are down ----------
+function resetMarks(){ steps.forEach((s, i) => { s.r = null; paintStep(i, null); }); }
 function startTraining(){
+  resetMarks();
   idx = 0; struck = new Set(); totalWrong = 0; trainStart = performance.now();
-  steps.forEach((st, i) => { st.r = { wrong: 0 }; paintStep(i, null); });
-  running = true; focusStep();
+  steps.forEach(s => { s.r = { wrong: 0 }; });
+  running = true; $('sheetWrap').scrollTop = 0; focusStep();
 }
 function focusStep(){
   if (idx >= steps.length) return finishTraining();
-  paintStep(idx, 'cur'); moveCursor(xOf(steps[idx].beat));
+  paintStep(idx, 'cur'); goToStep(idx);
   setHints(steps[idx].notes); showTrainStatus();
 }
 function trainOn(n){
@@ -343,7 +381,7 @@ function trainOn(n){
 }
 function showTrainStatus(){
   const st = steps[idx]; if (!st) return;
-  const need = st.notes.map(m => (struck.has(m) && held.has(m) ? '✓' : '') + name(m)).join('  ');
+  const need = st.notes.map((m, i) => (struck.has(m) && held.has(m) ? '✓' : '') + (st.names[i] || name(m))).join('  ');
   $('msg').textContent = (st.notes.length > 1 ? 'Chord: ' : 'Play: ') + need;
   $('score').textContent = `step ${idx+1}/${steps.length} · wrong ${totalWrong}`;
 }
@@ -358,18 +396,20 @@ function finishTraining(){
 // ---------- play mode: runs on time, grades each step ----------
 const TOL_MAX = 220; // ms either side of the beat
 function startPlay(){
+  resetMarks();
   beatMs = 60000 / +$('bpm').value;
-  t0 = performance.now() + 4*beatMs;  // one bar count-in
+  const barBeats = (() => { try { const r = osmd.Sheet.SourceMeasures[0].ActiveTimeSignature; return r.Numerator * 4 / r.Denominator; } catch(_) { return 4; } })();
+  t0 = performance.now() + barBeats*beatMs;  // one bar count-in
   totalWrong = 0; lastBeat = -99;
   steps.forEach((st, i) => {
     st.on = t0 + st.beat*beatMs;
     const gapPrev = i ? (st.beat - steps[i-1].beat)*beatMs : Infinity;
-    const gapNext = st.dur * beatMs;
+    const gapNext = steps[i+1] ? (steps[i+1].beat - st.beat)*beatMs : Infinity;
     st.tol = Math.min(TOL_MAX, gapPrev/2, gapNext/2);
     st.r = { hit: new Set(), dts: [], wrong: 0, graded: false };
-    paintStep(i, null);
   });
-  running = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+  running = true; $('sheetWrap').scrollTop = 0; moveCursorTo(0, false);
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
 }
 function playOn(n, t){
   let best = null, bd = Infinity;
@@ -384,17 +424,13 @@ function playOn(n, t){
 function tick(){
   const now = performance.now();
   const beat = (now - t0) / beatMs;
-  const total = steps[steps.length-1].beat + steps[steps.length-1].dur;
-  // metronome + count-in
   const whole = Math.floor(beat);
   if (whole !== lastBeat){
     lastBeat = whole;
-    if ($('tClick').checked && beat < total) tone(whole % 4 === 0 ? 1500 : 1000, 0.05, 0.25, 'square');
+    if ($('tClick').checked && beat < totalBeats) tone(whole % 4 === 0 ? 1500 : 1000, 0.05, 0.25, 'square');
   }
   $('countin').textContent = beat < 0 ? Math.ceil(-beat) : '';
-  moveCursor(xOf(Math.max(-0.25, beat)));
-  // grade steps whose window has closed
-  let ok = 0, part = 0, miss = 0, next = null;
+  let ok = 0, part = 0, miss = 0, next = null, nextI = -1;
   steps.forEach((st, i) => {
     if (!st.r.graded && now > st.on + st.tol){
       st.r.graded = true;
@@ -403,13 +439,16 @@ function tick(){
       paintStep(i, st.r.state);
     }
     if (st.r.graded){ if (st.r.state === 'ok') ok++; else if (st.r.state === 'part') part++; else miss++; }
-    else if (!next) next = st;
+    else if (!next){ next = st; nextI = i; }
   });
+  // cursor sits on the step whose time has come (or the first one during count-in)
+  let curI = 0; for (let i = 0; i < steps.length; i++) if (now >= steps[i].on - (steps[i].tol || 0)) curI = i;
+  moveCursorTo(steps[curI].k);
   setHints(next && next.notes);
-  if (next && now > next.on - next.tol) paintStep(steps.indexOf(next), 'cur');
-  $('msg').textContent = beat < 0 ? 'Get ready…' : next ? (next.notes.length > 1 ? 'Chord: ' : 'Next: ') + next.notes.map(name).join(' ') : '';
+  if (next && now > next.on - next.tol && next.state !== 'cur') paintStep(nextI, 'cur');
+  $('msg').textContent = beat < 0 ? 'Get ready…' : next ? (next.notes.length > 1 ? 'Chord: ' : 'Next: ') + next.names.join(' ') : '';
   $('score').textContent = `✓ ${ok} · ~ ${part} · ✗ ${miss} · wrong ${totalWrong}`;
-  if (beat > total + 0.5) return finishPlay(ok, part, miss);
+  if (beat > totalBeats + 0.5) return finishPlay(ok, part, miss);
   raf = requestAnimationFrame(tick);
 }
 function finishPlay(ok, part, miss){
@@ -467,34 +506,61 @@ function prefs(save){
     else { const p = JSON.parse(localStorage.getItem('pianoPocPrefs') || '{}'); ids.forEach(i => { if (i in p) $(i).checked = p[i]; }); }
   } catch(_){}
 }
-function applyToggles(){
+function applyToggles(e){
   document.body.classList.toggle('no-names', !$('tNames').checked);
-  document.body.classList.toggle('no-fingers', !$('tFingers').checked);
+  if (e && e.target.id === 'tFingers' && osmd && steps.length) renderScore();
   if (running && mode === 'train' && steps[idx]) setHints(steps[idx].notes);
   if (!$('tHints').checked) setHints(null);
 }
-function loadSong(){
-  stop(); steps = SONGS[songKey].steps; renderStaff(); moveCursor(xOf(0));
+function resetView(){
+  stop(); resetMarks(); if (osmd && steps.length) moveCursorTo(0, false); $('sheetWrap').scrollTop = 0;
   $('msg').textContent = 'Press Start.'; $('score').textContent = ''; $('startBtn').textContent = 'Start';
 }
 
-const sel = $('song');
-Object.entries(SONGS).forEach(([k, s]) => { const o = document.createElement('option'); o.value = k; o.textContent = s.title; sel.appendChild(o); });
-sel.onchange = () => { songKey = sel.value; loadSong(); };
 $('modeSeg').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
   mode = b.dataset.mode;
   [...$('modeSeg').children].forEach(x => x.classList.toggle('sel', x === b));
-  $('bpmBox').hidden = mode !== 'play'; loadSong();
+  $('bpmBox').hidden = mode !== 'play'; resetView();
 };
 $('bpm').oninput = () => { $('bpmVal').textContent = $('bpm').value; };
 $('startBtn').onclick = () => { audio(); stop(); mode === 'train' ? startTraining() : startPlay(); $('startBtn').textContent = 'Restart'; };
 $('midiBtn').onclick = connectMidi;
-document.querySelectorAll('.toggles input').forEach(i => i.onchange = () => { prefs(true); applyToggles(); });
+document.querySelectorAll('.toggles input').forEach(i => i.onchange = e => { prefs(true); applyToggles(e); });
 
-prefs(false); applyToggles(); renderKeyboard(); loadSong();
+// song list + file opening
+const sel = $('song');
+sel.onchange = () => {
+  if (sel.value) { steps = []; loadScore(sel.value, sel.selectedOptions[0].textContent); }
+};
+$('openBtn').onclick = () => $('file').click();
+$('file').onchange = () => {
+  const f = $('file').files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    let o = [...sel.options].find(x => x.dataset.custom);
+    if (!o){ o = document.createElement('option'); o.dataset.custom = '1'; o.value = ''; sel.appendChild(o); }
+    o.textContent = '📄 ' + f.name; sel.value = ''; o.selected = true;
+    steps = []; loadScore(rd.result, f.name);
+  };
+  // .mxl is zipped; OSMD wants it as a binary string
+  if (/\.mxl$/i.test(f.name)) rd.readAsBinaryString(f); else rd.readAsText(f);
+  $('file').value = '';
+};
+
+prefs(false); applyToggles();
+fetch('songs/index.json').then(r => r.json()).then(list => {
+  list.forEach(s => { const o = document.createElement('option'); o.value = s.file; o.textContent = s.title; sel.appendChild(o); });
+  if (!window.opensheetmusicdisplay){ $('msg').textContent = 'Could not load the sheet-music library (offline?).'; return; }
+  sel.value = list[0].file; loadScore(list[0].file, list[0].title);
+}).catch(err => { $('msg').textContent = 'Could not load the song list: ' + err.message; });
+
 // Exposed for testing without a piano.
-window.__piano = { noteOn: (n, t) => noteOn(n, 100, t ?? performance.now(), 'test'), noteOff, get steps(){ return steps; }, get idx(){ return idx; } };
+window.__piano = {
+  noteOn: (n, t) => noteOn(n, 100, t ?? performance.now(), 'test'), noteOff,
+  load: (xml, label) => { steps = []; return loadScore(xml, label || 'test'); },
+  get steps(){ return steps; }, get idx(){ return idx; },
+};
 })();
 </script>
 </body>
