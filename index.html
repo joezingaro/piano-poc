@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Piano Gate POC</title>
+<style>
+:root{
+  --bg:#f7f5f0; --panel:#ffffff; --ink:#1d1d1f; --muted:#6c6b70; --line:#d8d4cb;
+  --accent:#2f6fed; --ok:#1f9d55; --part:#d98a00; --bad:#d64545;
+  --white:#fdfdfb; --black:#1b1b1d; --hint:#bcd2ff; --down:#8fb0f5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#131315; --panel:#1c1c20; --ink:#ecebe7; --muted:#9a99a1; --line:#3a3a41;
+    --accent:#7aa5ff; --ok:#41d282; --part:#f2ab35; --bad:#ff6f6f;
+    --white:#e9e7e2; --black:#0c0c0e; --hint:#7aa5ff; --down:#4d7bdc;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:12px 16px 24px;max-width:1100px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1{font-size:18px;margin:0;flex:1 1 auto;min-width:0}
+button,select{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:8px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.pill{font-size:13px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.pill.on{color:var(--ok);border-color:var(--ok)}
+.pill.err{color:var(--bad);border-color:var(--bad)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--panel)}
+.seg button.sel{background:var(--accent);color:#fff}
+label.bpm{display:flex;align-items:center;gap:6px;color:var(--muted)}
+label.bpm input{width:110px}
+#status{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--panel);
+  border:1px solid var(--line);min-height:46px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#status .big{font-size:18px;font-weight:600}
+#status .score{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted)}
+#countin{font-size:28px;font-weight:700;color:var(--accent)}
+#staffWrap{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+#staff{display:block}
+#staff .sl{stroke:var(--ink);stroke-width:1;opacity:.55}
+#staff .bar{stroke:var(--ink);stroke-width:1.2;opacity:.7}
+#staff .clef{fill:var(--ink);font-size:58px}
+#staff .step{color:var(--ink)}
+#staff .step.cur{color:var(--accent)}
+#staff .step.ok{color:var(--ok)}
+#staff .step.part{color:var(--part)}
+#staff .step.miss{color:var(--bad)}
+#staff .head.filled{fill:currentColor}
+#staff .head.hollow{fill:none;stroke:currentColor;stroke-width:1.7}
+#staff .stem,#staff .ledger,#staff .flag{stroke:currentColor;stroke-width:1.4;fill:none}
+#staff .dot{fill:currentColor}
+#staff .ann{fill:currentColor;font-size:11px;text-anchor:middle;opacity:.85}
+#staff .fing{font-weight:700;font-size:12px}
+#staff .cursor{fill:var(--accent);opacity:.13}
+body.no-names #staff .ann-name{display:none}
+body.no-fingers #staff .ann-finger{display:none}
+.toggles{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.toggles label{display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--line);
+  border-radius:999px;background:var(--panel);font-size:13px;cursor:pointer;user-select:none}
+#kbd{position:relative;height:150px;margin-top:12px;user-select:none;touch-action:none}
+#kbd .w{position:absolute;top:0;bottom:0;background:var(--white);border:1px solid #9a978f;
+  border-radius:0 0 6px 6px;display:flex;align-items:flex-end;justify-content:center;
+  padding-bottom:6px;font-size:10px;color:#77746c}
+#kbd .b{position:absolute;top:0;height:62%;background:var(--black);border-radius:0 0 4px 4px;z-index:2}
+#kbd .hint.w{background:var(--hint)}
+#kbd .hint.b{background:var(--accent)}
+#kbd .down.w{background:var(--down)}
+#kbd .down.b{background:#3d5fae}
+#kbd .wrong.w,#kbd .wrong.b{background:var(--bad)!important}
+details{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+summary{cursor:pointer;color:var(--muted)}
+#log{font:12px/1.5 ui-monospace,Consolas,monospace;max-height:180px;overflow:auto;white-space:pre}
+#devs{font-size:13px;color:var(--muted);margin:6px 0}
+.help{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎹 Piano gate — proof of concept</h1>
+  <span id="midiPill" class="pill">MIDI: not connected</span>
+  <button id="midiBtn">Connect MIDI</button>
+</header>
+
+<div class="row">
+  <select id="song"></select>
+  <div class="seg" id="modeSeg">
+    <button data-mode="train" class="sel">Training</button>
+    <button data-mode="play">Play</button>
+  </div>
+  <label class="bpm" id="bpmBox" hidden>Tempo <input id="bpm" type="range" min="40" max="140" value="72"><span id="bpmVal">72</span></label>
+  <button id="startBtn" class="primary">Start</button>
+</div>
+
+<div id="status"><span class="big" id="msg">Pick a song and press Start.</span><span id="countin"></span><span class="score" id="score"></span></div>
+
+<div id="staffWrap"><svg id="staff"></svg></div>
+
+<div class="toggles">
+  <label><input type="checkbox" id="tNames" checked> Note names</label>
+  <label><input type="checkbox" id="tFingers" checked> Finger numbers</label>
+  <label><input type="checkbox" id="tHints" checked> Key hints</label>
+  <label><input type="checkbox" id="tClick"> Metronome</label>
+  <label><input type="checkbox" id="tSound"> Sound for on-screen keys</label>
+</div>
+
+<div id="kbd"></div>
+<p class="help">No piano handy? Tap the keys (several fingers = a chord), or use the computer keyboard: <b>A W S E D F T G Y H U J K</b> = C4 to C5, <b>Z</b> = B3.</p>
+
+<details id="mon">
+  <summary>MIDI monitor</summary>
+  <div id="devs">No MIDI access yet.</div>
+  <div id="log"></div>
+</details>
+
+<script>
+(() => {
+'use strict';
+
+// ---------- songs ----------
+// Each step: notes (MIDI numbers, all struck together = chord), dur in beats, fingers.
+function build(seq){
+  let beat = 0;
+  return seq.map(([n, dur, f]) => {
+    const notes = Array.isArray(n) ? n : [n];
+    const fingers = Array.isArray(f) ? f : [f];
+    const s = { beat, dur, notes, fingers };
+    beat += dur;
+    return s;
+  });
+}
+const M1 = [[64,1,3],[64,1,3],[65,1,4],[67,1,5]];
+const M2 = [[67,1,5],[65,1,4],[64,1,3],[62,1,2]];
+const M3 = [[60,1,1],[60,1,1],[62,1,2],[64,1,3]];
+const SONGS = {
+  ode: { title: 'Ode to Joy (right hand) + chord ending', steps: build([
+    ...M1, ...M2, ...M3, [64,1.5,3],[62,.5,2],[62,2,2],
+    ...M1, ...M2, ...M3, [62,1.5,2],[60,.5,1],[60,2,1],
+    [[60,64,67],2,[1,3,5]], [[59,62,67],2,[1,2,5]],
+    [[60,64,67],4,[1,3,5]],
+  ])},
+  chords: { title: 'Chord check: C, F, G, C', steps: build([
+    [[60,64,67],2,[1,3,5]], [[60,65,69],2,[1,4,5]],
+    [[59,62,67],2,[1,2,5]], [[60,64,67],2,[1,3,5]],
+    [[60,64,67],1,[1,3,5]], [[60,65,69],1,[1,4,5]], [[59,62,67],1,[1,2,5]], [[60,64,67],1,[1,3,5]],
+    [[60,64,67],4,[1,3,5]],
+  ])},
+};
+
+// ---------- music helpers ----------
+const LETTER = [0,0,1,1,2,3,3,4,4,5,5,6];
+const SHARP  = [0,1,0,1,0,0,1,0,1,0,1,0];
+const NAMES  = ['C','D','E','F','G','A','B'];
+const oct  = m => Math.floor(m/12) - 1;
+const dia  = m => oct(m)*7 + LETTER[m%12];          // diatonic index; E4 = 30
+const name = m => NAMES[LETTER[m%12]] + (SHARP[m%12] ? '♯' : '') + oct(m);
+
+// ---------- state ----------
+const $ = id => document.getElementById(id);
+const held = new Set();
+let songKey = 'ode', steps = [], mode = 'train';
+let running = false, idx = 0, struck = new Set();
+let trainStart = 0, totalWrong = 0;
+let t0 = 0, beatMs = 0, raf = 0, lastBeat = -99;
+
+// ---------- staff rendering ----------
+const H = 6, BOTTOM = 122, LEFT = 74, PPB = 58, NOTE_OFF = 20;
+const yOf = d => BOTTOM - (d - 30) * H;
+const xOf = beat => LEFT + beat * PPB + NOTE_OFF;
+
+function renderStaff(){
+  const total = steps.length ? steps[steps.length-1].beat + steps[steps.length-1].dur : 4;
+  const W = LEFT + total*PPB + 30;
+  const svg = $('staff');
+  svg.setAttribute('width', W); svg.setAttribute('height', 190);
+  svg.setAttribute('viewBox', `0 0 ${W} 190`);
+  let s = '';
+  for (let i = 0; i < 5; i++){ const y = BOTTOM - i*2*H; s += `<line class="sl" x1="8" x2="${W-12}" y1="${y}" y2="${y}"/>`; }
+  s += `<text class="clef" x="10" y="${BOTTOM+12}">𝄞</text>`;
+  const top = BOTTOM - 8*H;
+  for (let b = 4; b <= total; b += 4){
+    const x = LEFT + b*PPB;
+    s += `<line class="bar" x1="${x}" x2="${x}" y1="${top}" y2="${BOTTOM}"/>`;
+    if (b === total) s += `<line class="bar" x1="${x+4}" x2="${x+4}" y1="${top}" y2="${BOTTOM}" style="stroke-width:3.5"/>`;
+  }
+  s += `<rect class="cursor" id="cursor" x="0" y="${top-26}" width="30" height="${8*H+52}" rx="6"/>`;
+  steps.forEach((st, i) => { s += stepSvg(st, i); });
+  svg.innerHTML = s;
+}
+
+function stepSvg(st, i){
+  const cx = xOf(st.beat);
+  const ds = st.notes.map(dia);
+  const lo = Math.min(...ds), hi = Math.max(...ds);
+  const filled = st.dur < 2;
+  const stemUp = (lo + hi) / 2 < 34;
+  let s = `<g class="step" id="st${i}">`;
+  // ledger lines
+  for (let d = 28; d >= lo; d -= 2) s += `<line class="ledger" x1="${cx-11}" x2="${cx+11}" y1="${yOf(d)}" y2="${yOf(d)}"/>`;
+  for (let d = 40; d <= hi; d += 2) s += `<line class="ledger" x1="${cx-11}" x2="${cx+11}" y1="${yOf(d)}" y2="${yOf(d)}"/>`;
+  st.notes.forEach((m, k) => {
+    const y = yOf(ds[k]);
+    s += `<ellipse class="head ${filled ? 'filled' : 'hollow'}" cx="${cx}" cy="${y}" rx="6.6" ry="4.6" transform="rotate(-20 ${cx} ${y})"/>`;
+    if (SHARP[m%12]) s += `<text class="ann" x="${cx-15}" y="${y+4}" style="font-size:14px">♯</text>`;
+    if (st.dur === 1.5 || st.dur === 3){ const dy = (ds[k]-30) % 2 === 0 ? -3 : 0; s += `<circle class="dot" cx="${cx+11}" cy="${y+dy}" r="1.8"/>`; }
+  });
+  if (st.dur < 4){
+    if (stemUp){
+      const x = cx + 6.2, y1 = yOf(lo), y2 = yOf(hi) - 34;
+      s += `<line class="stem" x1="${x}" x2="${x}" y1="${y1}" y2="${y2}"/>`;
+      if (st.dur === .5) s += `<path class="flag" d="M${x},${y2} q2,9 9,13 q4,4 1,11"/>`;
+    } else {
+      const x = cx - 6.2, y1 = yOf(hi), y2 = yOf(lo) + 34;
+      s += `<line class="stem" x1="${x}" x2="${x}" y1="${y1}" y2="${y2}"/>`;
+      if (st.dur === .5) s += `<path class="flag" d="M${x},${y2} q2,-9 9,-13 q4,-4 1,-11"/>`;
+    }
+  }
+  // annotations: finger numbers above the staff, note names below
+  const fTop = Math.min(BOTTOM - 8*H, yOf(hi)) - 14;
+  const fs = [...st.fingers].reverse();
+  fs.forEach((f, k) => { s += `<text class="ann ann-finger fing" x="${cx}" y="${fTop - k*12}">${f}</text>`; });
+  const nTop = Math.max(BOTTOM, yOf(lo)) + 20;
+  [...st.notes].sort((a,b) => b-a).forEach((m, k) => { s += `<text class="ann ann-name" x="${cx}" y="${nTop + k*12}">${name(m)}</text>`; });
+  return s + '</g>';
+}
+
+function paintStep(i, cls){
+  const g = $('st'+i); if (!g) return;
+  g.classList.remove('cur','ok','part','miss');
+  if (cls) g.classList.add(cls);
+}
+function moveCursor(x){
+  const c = $('cursor'); if (c) c.setAttribute('x', x - 15);
+  const wrap = $('staffWrap');
+  wrap.scrollLeft = Math.max(0, x - wrap.clientWidth * 0.3);
+}
+
+// ---------- on-screen keyboard ----------
+const KLO = 57, KHI = 84;  // A3 .. C6
+const keyEls = {};
+function renderKeyboard(){
+  const kbd = $('kbd'); kbd.innerHTML = '';
+  const whites = []; for (let m = KLO; m <= KHI; m++) if (!SHARP[m%12]) whites.push(m);
+  const ww = 100 / whites.length;
+  whites.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'w'; el.style.left = (i*ww)+'%'; el.style.width = ww+'%';
+    el.dataset.note = m; if (m%12 === 0) el.textContent = name(m);
+    kbd.appendChild(el); keyEls[m] = el;
+  });
+  for (let m = KLO; m <= KHI; m++){
+    if (!SHARP[m%12]) continue;
+    const i = whites.indexOf(m-1);
+    const el = document.createElement('div');
+    el.className = 'b'; el.style.left = ((i+1)*ww - ww*0.3)+'%'; el.style.width = (ww*0.6)+'%';
+    el.dataset.note = m; kbd.appendChild(el); keyEls[m] = el;
+  }
+  const byPointer = new Map();
+  kbd.addEventListener('pointerdown', e => {
+    const n = +e.target.dataset.note; if (!n) return;
+    e.preventDefault(); byPointer.set(e.pointerId, n);
+    noteOn(n, 100, performance.now(), 'screen');
+  });
+  const up = e => { const n = byPointer.get(e.pointerId); if (n){ byPointer.delete(e.pointerId); noteOff(n); } };
+  ['pointerup','pointercancel','pointerleave'].forEach(t => kbd.addEventListener(t, up));
+}
+function setHints(notes){
+  Object.values(keyEls).forEach(el => el.classList.remove('hint'));
+  if (!$('tHints').checked || !notes) return;
+  notes.forEach(m => keyEls[m] && keyEls[m].classList.add('hint'));
+}
+function flashWrong(n){
+  const el = keyEls[n]; if (!el) return;
+  el.classList.add('wrong'); setTimeout(() => el.classList.remove('wrong'), 350);
+}
+
+// ---------- computer keyboard ----------
+const KEYMAP = {a:60,w:61,s:62,e:63,d:64,f:65,t:66,g:67,y:68,h:69,u:70,j:71,k:72,o:73,l:74,z:59};
+addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const n = KEYMAP[e.key.toLowerCase()]; if (n){ e.preventDefault(); noteOn(n, 100, performance.now(), 'keys'); }
+});
+addEventListener('keyup', e => { const n = KEYMAP[e.key.toLowerCase()]; if (n) noteOff(n); });
+
+// ---------- audio (only for on-screen / computer keys; the piano makes its own sound) ----------
+let ac = null;
+function audio(){ if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch(_){} } return ac; }
+function tone(freq, len, vol, type){
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + len);
+}
+const midiHz = m => 440 * Math.pow(2, (m-69)/12);
+
+// ---------- note events (all inputs land here) ----------
+const logLines = [];
+function log(line){
+  logLines.unshift(line); if (logLines.length > 40) logLines.pop();
+  $('log').textContent = logLines.join('\n');
+}
+function noteOn(n, vel, t, src){
+  held.add(n);
+  keyEls[n] && keyEls[n].classList.add('down');
+  log(`▼ ${String(n).padStart(3)} ${name(n).padEnd(4)} vel ${String(vel).padStart(3)}  ${src}`);
+  if (src !== 'midi' && $('tSound').checked) tone(midiHz(n), 0.6, 0.18, 'triangle');
+  if (running) (mode === 'train' ? trainOn : playOn)(n, t);
+}
+function noteOff(n){
+  held.delete(n);
+  keyEls[n] && keyEls[n].classList.remove('down');
+  log(`▲ ${String(n).padStart(3)} ${name(n)}`);
+  if (running && mode === 'train') showTrainStatus();
+}
+
+// ---------- training mode: wait until the right keys are down ----------
+function startTraining(){
+  idx = 0; struck = new Set(); totalWrong = 0; trainStart = performance.now();
+  steps.forEach((st, i) => { st.r = { wrong: 0 }; paintStep(i, null); });
+  running = true; focusStep();
+}
+function focusStep(){
+  if (idx >= steps.length) return finishTraining();
+  paintStep(idx, 'cur'); moveCursor(xOf(steps[idx].beat));
+  setHints(steps[idx].notes); showTrainStatus();
+}
+function trainOn(n){
+  const st = steps[idx]; if (!st) return;
+  if (st.notes.includes(n)) struck.add(n);
+  else { st.r.wrong++; totalWrong++; flashWrong(n); }
+  // Gate: every note of the step struck since the step began AND all held together.
+  if (st.notes.every(m => struck.has(m) && held.has(m))){
+    paintStep(idx, st.r.wrong ? 'part' : 'ok');
+    idx++; struck = new Set(); focusStep();
+  } else showTrainStatus();
+}
+function showTrainStatus(){
+  const st = steps[idx]; if (!st) return;
+  const need = st.notes.map(m => (struck.has(m) && held.has(m) ? '✓' : '') + name(m)).join('  ');
+  $('msg').textContent = (st.notes.length > 1 ? 'Chord: ' : 'Play: ') + need;
+  $('score').textContent = `step ${idx+1}/${steps.length} · wrong ${totalWrong}`;
+}
+function finishTraining(){
+  running = false; setHints(null);
+  const clean = steps.filter(s => !s.r.wrong).length;
+  const secs = ((performance.now() - trainStart)/1000).toFixed(1);
+  $('msg').textContent = `Done! ${clean}/${steps.length} steps clean, ${totalWrong} wrong presses, ${secs}s.`;
+  $('score').textContent = ''; $('startBtn').textContent = 'Again';
+}
+
+// ---------- play mode: runs on time, grades each step ----------
+const TOL_MAX = 220; // ms either side of the beat
+function startPlay(){
+  beatMs = 60000 / +$('bpm').value;
+  t0 = performance.now() + 4*beatMs;  // one bar count-in
+  totalWrong = 0; lastBeat = -99;
+  steps.forEach((st, i) => {
+    st.on = t0 + st.beat*beatMs;
+    const gapPrev = i ? (st.beat - steps[i-1].beat)*beatMs : Infinity;
+    const gapNext = st.dur * beatMs;
+    st.tol = Math.min(TOL_MAX, gapPrev/2, gapNext/2);
+    st.r = { hit: new Set(), dts: [], wrong: 0, graded: false };
+    paintStep(i, null);
+  });
+  running = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+}
+function playOn(n, t){
+  let best = null, bd = Infinity;
+  for (const st of steps){
+    const dt = Math.abs(t - st.on);
+    if (!st.r.graded && dt <= st.tol && dt < bd){ best = st; bd = dt; }
+  }
+  if (best && best.notes.includes(n) && !best.r.hit.has(n)){
+    best.r.hit.add(n); best.r.dts.push(t - best.on);
+  } else { totalWrong++; if (best) best.r.wrong++; flashWrong(n); }
+}
+function tick(){
+  const now = performance.now();
+  const beat = (now - t0) / beatMs;
+  const total = steps[steps.length-1].beat + steps[steps.length-1].dur;
+  // metronome + count-in
+  const whole = Math.floor(beat);
+  if (whole !== lastBeat){
+    lastBeat = whole;
+    if ($('tClick').checked && beat < total) tone(whole % 4 === 0 ? 1500 : 1000, 0.05, 0.25, 'square');
+  }
+  $('countin').textContent = beat < 0 ? Math.ceil(-beat) : '';
+  moveCursor(xOf(Math.max(-0.25, beat)));
+  // grade steps whose window has closed
+  let ok = 0, part = 0, miss = 0, next = null;
+  steps.forEach((st, i) => {
+    if (!st.r.graded && now > st.on + st.tol){
+      st.r.graded = true;
+      const h = st.r.hit.size;
+      st.r.state = h === st.notes.length ? 'ok' : h ? 'part' : 'miss';
+      paintStep(i, st.r.state);
+    }
+    if (st.r.graded){ if (st.r.state === 'ok') ok++; else if (st.r.state === 'part') part++; else miss++; }
+    else if (!next) next = st;
+  });
+  setHints(next && next.notes);
+  if (next && now > next.on - next.tol) paintStep(steps.indexOf(next), 'cur');
+  $('msg').textContent = beat < 0 ? 'Get ready…' : next ? (next.notes.length > 1 ? 'Chord: ' : 'Next: ') + next.notes.map(name).join(' ') : '';
+  $('score').textContent = `✓ ${ok} · ~ ${part} · ✗ ${miss} · wrong ${totalWrong}`;
+  if (beat > total + 0.5) return finishPlay(ok, part, miss);
+  raf = requestAnimationFrame(tick);
+}
+function finishPlay(ok, part, miss){
+  running = false; setHints(null); $('countin').textContent = '';
+  const dts = steps.flatMap(s => s.r.dts);
+  const avg = dts.length ? Math.round(dts.reduce((a,b) => a+b, 0) / dts.length) : 0;
+  const pct = Math.round(100 * (ok + part*0.5) / steps.length);
+  $('msg').textContent = `${pct}% — ${ok} right, ${part} partly, ${miss} missed, ${totalWrong} wrong notes. ` +
+    (dts.length ? `On average ${Math.abs(avg)} ms ${avg < 0 ? 'early' : 'late'}.` : '');
+  $('startBtn').textContent = 'Again';
+}
+
+function stop(){
+  running = false; cancelAnimationFrame(raf); setHints(null); $('countin').textContent = '';
+}
+
+// ---------- Web MIDI ----------
+async function connectMidi(){
+  const pill = $('midiPill');
+  if (!navigator.requestMIDIAccess){
+    pill.textContent = 'MIDI: not supported in this browser'; pill.className = 'pill err';
+    $('devs').textContent = window.isSecureContext ? 'This browser has no Web MIDI. Use Chrome (Android or desktop).' :
+      'Web MIDI needs a secure page (https or localhost). This page is ' + location.origin;
+    return;
+  }
+  try {
+    const access = await navigator.requestMIDIAccess({ sysex: false });
+    const wire = () => {
+      const names = [];
+      access.inputs.forEach(inp => { inp.onmidimessage = onMidi; names.push(inp.name + (inp.state === 'connected' ? '' : ' (' + inp.state + ')')); });
+      $('devs').textContent = names.length ? 'Inputs: ' + names.join(', ') : 'MIDI allowed, but no input devices found. Is the piano paired/plugged in?';
+      pill.textContent = names.length ? 'MIDI: ' + names[0] : 'MIDI: no devices';
+      pill.className = 'pill ' + (names.length ? 'on' : 'err');
+    };
+    access.onstatechange = wire; wire();
+    $('midiBtn').textContent = 'Rescan';
+  } catch (err){
+    pill.textContent = 'MIDI: blocked'; pill.className = 'pill err';
+    $('devs').textContent = 'MIDI permission refused: ' + err.message;
+  }
+}
+function onMidi(e){
+  const [st, d1, d2] = e.data, cmd = st & 0xf0;
+  const t = e.timeStamp || performance.now();
+  if (cmd === 0x90 && d2 > 0) noteOn(d1, d2, t, 'midi');
+  else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) noteOff(d1);
+  else if (cmd === 0xb0 && d1 === 64) log(`pedal ${d2 >= 64 ? 'down' : 'up'}`);
+}
+
+// ---------- wiring ----------
+function prefs(save){
+  const ids = ['tNames','tFingers','tHints','tClick','tSound'];
+  try {
+    if (save) localStorage.setItem('pianoPocPrefs', JSON.stringify(Object.fromEntries(ids.map(i => [i, $(i).checked]))));
+    else { const p = JSON.parse(localStorage.getItem('pianoPocPrefs') || '{}'); ids.forEach(i => { if (i in p) $(i).checked = p[i]; }); }
+  } catch(_){}
+}
+function applyToggles(){
+  document.body.classList.toggle('no-names', !$('tNames').checked);
+  document.body.classList.toggle('no-fingers', !$('tFingers').checked);
+  if (running && mode === 'train' && steps[idx]) setHints(steps[idx].notes);
+  if (!$('tHints').checked) setHints(null);
+}
+function loadSong(){
+  stop(); steps = SONGS[songKey].steps; renderStaff(); moveCursor(xOf(0));
+  $('msg').textContent = 'Press Start.'; $('score').textContent = ''; $('startBtn').textContent = 'Start';
+}
+
+const sel = $('song');
+Object.entries(SONGS).forEach(([k, s]) => { const o = document.createElement('option'); o.value = k; o.textContent = s.title; sel.appendChild(o); });
+sel.onchange = () => { songKey = sel.value; loadSong(); };
+$('modeSeg').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  mode = b.dataset.mode;
+  [...$('modeSeg').children].forEach(x => x.classList.toggle('sel', x === b));
+  $('bpmBox').hidden = mode !== 'play'; loadSong();
+};
+$('bpm').oninput = () => { $('bpmVal').textContent = $('bpm').value; };
+$('startBtn').onclick = () => { audio(); stop(); mode === 'train' ? startTraining() : startPlay(); $('startBtn').textContent = 'Restart'; };
+$('midiBtn').onclick = connectMidi;
+document.querySelectorAll('.toggles input').forEach(i => i.onchange = () => { prefs(true); applyToggles(); });
+
+prefs(false); applyToggles(); renderKeyboard(); loadSong();
+// Exposed for testing without a piano.
+window.__piano = { noteOn: (n, t) => noteOn(n, 100, t ?? performance.now(), 'test'), noteOff, get steps(){ return steps; }, get idx(){ return idx; } };
+})();
+</script>
+</body>
+</html>
